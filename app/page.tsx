@@ -11,7 +11,6 @@ import {
   EyeOff,
   UserCheck,
   AlertCircle,
-  Smartphone,
   LogOut,
 } from 'lucide-react';
 import { NeuCard } from '@/components/ui/NeuCard';
@@ -165,7 +164,7 @@ export default function LoginPage() {
                 <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Contoh: alpin atau 021"
+                  placeholder="Masukkan username atau NIP"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 neu-input text-sm text-slate-800"
@@ -215,11 +214,6 @@ export default function LoginPage() {
           </form>
         </NeuCard>
 
-        {/* Footer info */}
-        <div className="text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5 pt-2">
-          <Smartphone className="w-3.5 h-3.5 text-blue-500" />
-          <span>Responsif Mobile First • Siap Absen Kamera Selfie</span>
-        </div>
       </div>
     </div>
   );
