@@ -146,17 +146,9 @@ export default function AbsensiPage() {
       {/* Top Banner: Greeting & Info */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs uppercase font-extrabold tracking-widest text-blue-600 bg-blue-500/10 px-2.5 py-0.5 rounded-full border border-blue-500/20">
-              Presensi Selfie Digital
-            </span>
-          </div>
           <h1 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight">
             Selamat {currentTime && currentTime.getHours() < 11 ? 'Pagi' : currentTime && currentTime.getHours() < 15 ? 'Siang' : 'Sore'}, {currentUser?.name || 'Karyawan'}!
           </h1>
-          <p className="text-sm text-slate-500">
-            Jam kerja: <strong>07:00 – 16:00 WIB</strong> (Toleransi keterlambatan hingga 07:15 WIB).
-          </p>
         </div>
 
         <Link href="/riwayat">
@@ -175,16 +167,9 @@ export default function AbsensiPage() {
               <div className="p-2 neu-inset rounded-xl text-blue-600">
                 <Target className="w-5 h-5" />
               </div>
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-800">
-                  Target Kehadiran Bulan Ini (Wajib 24 Hari)
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {monthlyQuota.isTargetMet
-                    ? `🎉 Selamat! Anda telah memenuhi syarat kehadiran minimal (${monthlyQuota.totalPresentDays} hari).`
-                    : `Tersisa ${monthlyQuota.remainingDays} hari lagi untuk mencapai kuota 24 hari bulan ini.`}
-                </p>
-              </div>
+              <h3 className="text-sm font-extrabold text-slate-800">
+                Kehadiran Bulan Ini
+              </h3>
             </div>
 
             <div className="flex items-center gap-2">
@@ -422,7 +407,7 @@ export default function AbsensiPage() {
                 className="w-full h-14"
               >
                 <LogIn className="w-5 h-5" />
-                <span>{isClockedIn ? 'Sudah Clock In' : 'Clock In (Selfie Masuk)'}</span>
+                <span>{isClockedIn ? 'Sudah Clock In' : 'Clock In'}</span>
               </NeuButton>
 
               <NeuButton

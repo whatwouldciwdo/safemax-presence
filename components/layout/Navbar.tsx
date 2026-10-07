@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { Employee } from '@/lib/types';
 import { AttendanceService } from '@/lib/attendance-service';
-import { APP_MODE, isDemoMode } from '@/lib/app-mode';
+import { isDemoMode } from '@/lib/app-mode';
 
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
@@ -168,10 +168,6 @@ export const Navbar: React.FC = () => {
                         {currentUser.role === 'admin' ? 'Administrator HR' : 'Karyawan Staff'}
                       </span>
                     </div>
-
-                    <p className="text-[10px] uppercase font-bold text-slate-400 px-3 py-1">
-                      Mode {APP_MODE === 'demo' ? 'Demo Lokal' : 'Production'}
-                    </p>
 
                     <div className="mt-2 pt-2 border-t border-slate-200/60">
                       <Link
