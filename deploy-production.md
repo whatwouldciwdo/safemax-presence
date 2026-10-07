@@ -61,14 +61,29 @@ Direktori yang digunakan dalam panduan ini:
 /opt/safemax-presence
 ```
 
-### Pilihan A: clone repository
+### Pilihan A: clone repository GitHub (disarankan)
+
+Repository aplikasi:
+
+```text
+https://github.com/whatwouldciwdo/safemax-presence.git
+```
+
+Pastikan `/opt/safemax-presence` belum berisi deployment lama, lalu clone branch `main`:
 
 ```bash
 cd /opt
-sudo git clone URL_REPOSITORY_ANDA safemax-presence
-sudo chown -R "$USER":"$USER" /opt/safemax-presence
+sudo mkdir -p /opt/safemax-presence
+sudo chown "$USER":"$USER" /opt/safemax-presence
+git clone --branch main --single-branch \
+  https://github.com/whatwouldciwdo/safemax-presence.git \
+  /opt/safemax-presence
 cd /opt/safemax-presence
+git remote -v
+git branch --show-current
 ```
+
+Hasil `git branch --show-current` harus menunjukkan `main`. Karena repository bersifat publik, clone melalui HTTPS tidak memerlukan GitHub token.
 
 ### Pilihan B: upload manual
 
@@ -343,18 +358,21 @@ Uji fungsi berikut:
 - Dashboard dan rekap admin.
 - Logout dan login kembali.
 
-## 12. Prosedur update aplikasi
+## 12. Prosedur update aplikasi dari GitHub
 
-Jika menggunakan Git:
+Ambil versi terbaru dari branch `main`, install dependency sesuai lockfile, build ulang, lalu restart aplikasi:
 
 ```bash
 cd /opt/safemax-presence
-git pull
+git status --short
+git pull --ff-only origin main
 npm ci
 npm run build:production
 sudo systemctl restart safemax
 sudo systemctl status safemax --no-pager
 ```
+
+`git status --short` seharusnya tidak menampilkan perubahan source code lokal sebelum `git pull`. File `.env.local` tidak akan ditampilkan karena diabaikan oleh `.gitignore` dan tetap tersimpan di server saat source code diperbarui.
 
 Periksa log setelah update:
 
