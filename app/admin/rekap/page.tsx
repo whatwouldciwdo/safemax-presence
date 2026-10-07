@@ -22,6 +22,7 @@ import {
   AlertCircle,
   TrendingUp,
   Sparkles,
+  FileText,
 } from 'lucide-react';
 import { NeuCard } from '@/components/ui/NeuCard';
 import { NeuButton } from '@/components/ui/NeuButton';
@@ -49,6 +50,7 @@ export default function RekapAbsensiPage() {
   const [attendances, setAttendances] = useState<Attendance[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(false);
+  const [exportingWord, setExportingWord] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; title: string } | null>(null);
 
   // Filters State for Daily Log
@@ -197,6 +199,60 @@ export default function RekapAbsensiPage() {
     document.body.removeChild(link);
   };
 
+  const handleExportMonthlyWord = async () => {
+    const currentUser = AttendanceService.getCurrentUser();
+    if (!currentUser || currentUser.role !== 'admin') {
+      alert('Ekspor Word hanya dapat dilakukan oleh administrator.');
+      router.push('/');
+      return;
+    }
+    if (!monthToUse) {
+      alert('Pilih bulan rekap terlebih dahulu.');
+      return;
+    }
+
+    setExportingWord(true);
+    try {
+      const [year, month] = monthToUse.split('-').map(Number);
+      const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      const monthlyAttendances = await AttendanceService.getAllAttendances({
+        dateFrom: `${monthToUse}-01`,
+        dateTo: `${monthToUse}-${String(lastDay).padStart(2, '0')}`,
+      });
+      const monthlyQuotas = activeStaff
+        .map((employee) =>
+          calculateEmployeeQuota(monthlyAttendances, employee, monthToUse, MANDATORY_MONTHLY_DAYS)
+        )
+        .sort((a, b) => a.employee.name.localeCompare(b.employee.name));
+      const logoResponse = await fetch('/logo.png');
+      if (!logoResponse.ok) throw new Error('Logo perusahaan tidak dapat dimuat.');
+
+      const { createMonthlyAttendanceDocx, getMonthlyAttendanceFilename } = await import(
+        '@/lib/monthly-attendance-docx'
+      );
+      const blob = await createMonthlyAttendanceDocx({
+        month: monthToUse,
+        attendances: monthlyAttendances,
+        quotas: monthlyQuotas,
+        generatedBy: currentUser.name,
+        logo: await logoResponse.arrayBuffer(),
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = getMonthlyAttendanceFilename(monthToUse);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      console.error(error);
+      alert(error instanceof Error ? error.message : 'Gagal membuat dokumen Word.');
+    } finally {
+      setExportingWord(false);
+    }
+  };
+
   // Export Daily Log CSV
   const handleExportDailyCSV = () => {
     if (attendances.length === 0) {
@@ -275,18 +331,31 @@ export default function RekapAbsensiPage() {
           </p>
         </div>
 
-        {/* Action Button: Export CSV based on active tab */}
+        {/* Export actions are available only inside this admin-protected page. */}
         {activeTab === 'quota' ? (
-          <NeuButton
-            variant="success"
-            size="md"
-            onClick={handleExportQuotaCSV}
-            disabled={filteredQuotas.length === 0}
-            className="shadow-md"
-          >
-            <FileDown className="w-4 h-4" />
-            <span>Export Rekap Kuota 24 Hari (CSV)</span>
-          </NeuButton>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <NeuButton
+              variant="primary"
+              size="md"
+              onClick={handleExportMonthlyWord}
+              disabled={!monthToUse || activeStaff.length === 0}
+              isLoading={exportingWord}
+              className="shadow-md"
+            >
+              <FileText className="w-4 h-4" />
+              <span>Unduh Rekap Bulanan (Word)</span>
+            </NeuButton>
+            <NeuButton
+              variant="success"
+              size="md"
+              onClick={handleExportQuotaCSV}
+              disabled={filteredQuotas.length === 0}
+              className="shadow-md"
+            >
+              <FileDown className="w-4 h-4" />
+              <span>Export CSV</span>
+            </NeuButton>
+          </div>
         ) : (
           <NeuButton
             variant="primary"
