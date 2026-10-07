@@ -1,7 +1,7 @@
 import { createClient, isSupabaseEnabled } from './supabase/client';
 import { Attendance, AttendanceFilter, DashboardStats, Employee } from './types';
 import { INITIAL_EMPLOYEES, INITIAL_ATTENDANCES } from './mock-data';
-import { calculateWorkHours, evaluateAttendance } from './attendance-utils';
+import { calculateWorkHours, evaluateAttendance, getJakartaDateKey } from './attendance-utils';
 import { findLocalAccount, updateLocalPassword } from './local-accounts';
 
 const STORAGE_KEY_ATTENDANCES = 'safemax_attendances_v2';
@@ -183,7 +183,7 @@ export class AttendanceService {
    * Get today's attendance for a specific employee
    */
   static async getTodayAttendance(employeeId: string): Promise<Attendance | null> {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getJakartaDateKey();
 
     if (isSupabaseEnabled()) {
       const supabase = createClient();
@@ -211,7 +211,7 @@ export class AttendanceService {
         // Convert data URL to Blob
         const res = await fetch(dataUrl);
         const blob = await res.blob();
-        const dateStr = new Date().toISOString().split('T')[0];
+        const dateStr = getJakartaDateKey();
         const fileName = `${employeeId}/${dateStr}-${type}-${Date.now()}.jpg`;
 
         const { error: uploadError } = await supabase.storage
@@ -239,7 +239,7 @@ export class AttendanceService {
    */
   static async clockIn(employeeId: string, selfieDataUrl: string, notes?: string): Promise<Attendance> {
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = getJakartaDateKey(now);
     const selfieUrl = await this.uploadSelfie(selfieDataUrl, employeeId, 'in');
     const evaluation = evaluateAttendance(now);
 
@@ -296,7 +296,7 @@ export class AttendanceService {
    */
   static async clockOut(employeeId: string, selfieDataUrl: string, notes?: string): Promise<Attendance> {
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = getJakartaDateKey(now);
     const selfieUrl = await this.uploadSelfie(selfieDataUrl, employeeId, 'out');
 
     const currentAttendance = await this.getTodayAttendance(employeeId);
@@ -422,7 +422,7 @@ export class AttendanceService {
     const activeEmployees = employees.filter((e) => e.is_active && e.role === 'employee');
     const totalEmployees = activeEmployees.length;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getJakartaDateKey();
     const attendances = await this.getAllAttendances({ dateFrom: todayStr, dateTo: todayStr });
 
     const presentToday = attendances.length;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Clock,
   Calendar,
@@ -26,6 +26,8 @@ import {
   evaluateAttendance,
   calculateEmployeeQuota,
   MANDATORY_MONTHLY_DAYS,
+  getJakartaDateKey,
+  getJakartaMonthKey,
 } from '@/lib/attendance-utils';
 
 export default function AbsensiPage() {
@@ -44,12 +46,50 @@ export default function AbsensiPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const loadData = useCallback(async (user: Employee) => {
+    setLoading(true);
+    try {
+      const att = await AttendanceService.getTodayAttendance(user.id);
+      setTodayAttendance(att);
+
+      const history = await AttendanceService.getEmployeeHistory(user.id);
+      const currentYearMonth = getJakartaMonthKey();
+      const quota = calculateEmployeeQuota(history, user, currentYearMonth, MANDATORY_MONTHLY_DAYS);
+      setMonthlyQuota(quota);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Live Clock Interval
   useEffect(() => {
     setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Refresh the daily state when an open tab crosses midnight WIB.
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let activeDate = getJakartaDateKey();
+    const refreshAfterDateChange = () => {
+      const nextDate = getJakartaDateKey();
+      if (nextDate !== activeDate) {
+        activeDate = nextDate;
+        void loadData(currentUser);
+      }
+    };
+
+    const timer = window.setInterval(refreshAfterDateChange, 1000);
+    document.addEventListener('visibilitychange', refreshAfterDateChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshAfterDateChange);
+    };
+  }, [currentUser, loadData]);
 
   // Load User, Today's Attendance, and Monthly Quota
   useEffect(() => {
@@ -60,24 +100,7 @@ export default function AbsensiPage() {
     }
     setCurrentUser(user);
     loadData(user);
-  }, [router]);
-
-  const loadData = async (user: Employee) => {
-    setLoading(true);
-    try {
-      const att = await AttendanceService.getTodayAttendance(user.id);
-      setTodayAttendance(att);
-
-      const history = await AttendanceService.getEmployeeHistory(user.id);
-      const currentYearMonth = new Date().toISOString().substring(0, 7);
-      const quota = calculateEmployeeQuota(history, user, currentYearMonth, MANDATORY_MONTHLY_DAYS);
-      setMonthlyQuota(quota);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [router, loadData]);
 
   const handleOpenCapture = (type: 'in' | 'out') => {
     setCameraType(type);

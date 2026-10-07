@@ -38,6 +38,9 @@ import {
   formatIndoTime,
   calculateEmployeeQuota,
   MANDATORY_MONTHLY_DAYS,
+  addDaysToDateKey,
+  getJakartaDateKey,
+  getJakartaMonthKey,
 } from '@/lib/attendance-utils';
 
 export default function RekapAbsensiPage() {
@@ -70,12 +73,9 @@ export default function RekapAbsensiPage() {
       return;
     }
 
-    const today = new Date();
-    const past = new Date();
-    past.setDate(past.getDate() - 30);
-    const fromStr = past.toISOString().split('T')[0];
-    const toStr = today.toISOString().split('T')[0];
-    const monthStr = today.toISOString().substring(0, 7); // "YYYY-MM"
+    const toStr = getJakartaDateKey();
+    const fromStr = addDaysToDateKey(toStr, -30);
+    const monthStr = getJakartaMonthKey();
 
     setDateFrom(fromStr);
     setDateTo(toStr);
@@ -635,8 +635,9 @@ export default function RekapAbsensiPage() {
               </div>
               <button
                 onClick={() => {
-                  setDateFrom(new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]);
-                  setDateTo(new Date().toISOString().split('T')[0]);
+                  const today = getJakartaDateKey();
+                  setDateFrom(addDaysToDateKey(today, -30));
+                  setDateTo(today);
                   setDepartment('all');
                   setStatus('all');
                   setSearch('');

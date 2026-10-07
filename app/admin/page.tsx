@@ -25,7 +25,7 @@ import { NeuButton } from '@/components/ui/NeuButton';
 import { NeuBadge } from '@/components/ui/NeuBadge';
 import { AttendanceService } from '@/lib/attendance-service';
 import { Attendance, DashboardStats, Employee } from '@/lib/types';
-import { formatIndoDate, formatIndoTime } from '@/lib/attendance-utils';
+import { formatIndoDate, formatIndoTime, getJakartaDateKey } from '@/lib/attendance-utils';
 
 export default function AdminDashboardPage() {
   const router = useRouter();
@@ -54,7 +54,7 @@ export default function AdminDashboardPage() {
       const statsData = await AttendanceService.getDashboardStats();
       setStats(statsData);
 
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getJakartaDateKey();
       const list = await AttendanceService.getAllAttendances({
         dateFrom: todayStr,
         dateTo: todayStr,

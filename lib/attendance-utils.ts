@@ -5,6 +5,42 @@ export const WORK_START_HOUR = 7; // Jam 07:00 WIB
 export const WORK_START_MINUTE = 0;
 export const WORK_TOLERANCE_MINUTES = 15; // Hingga 07:15 WIB
 export const WORK_END_HOUR = 16; // Jam 16:00 WIB (Jam 4 sore)
+export const ATTENDANCE_TIME_ZONE = 'Asia/Jakarta';
+
+function getJakartaDateParts(date: Date): Record<string, string> {
+  return Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: ATTENDANCE_TIME_ZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(date)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value])
+  );
+}
+
+/** Returns the attendance business date in WIB, independent of device/server timezone. */
+export function getJakartaDateKey(date: Date = new Date()): string {
+  const { year, month, day } = getJakartaDateParts(date);
+  return `${year}-${month}-${day}`;
+}
+
+/** Returns the attendance business month in WIB (YYYY-MM). */
+export function getJakartaMonthKey(date: Date = new Date()): string {
+  return getJakartaDateKey(date).slice(0, 7);
+}
+
+/** Adds calendar days to a date key without depending on the runtime timezone. */
+export function addDaysToDateKey(dateKey: string, days: number): string {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const result = new Date(Date.UTC(year, month - 1, day + days));
+  return result.toISOString().slice(0, 10);
+}
 
 export interface AttendanceEvaluation {
   status: AttendanceStatus;
@@ -16,8 +52,11 @@ export interface AttendanceEvaluation {
  * Checks if a date is on the weekend (Sabtu / Minggu)
  */
 export function isWeekend(date: Date = new Date()): boolean {
-  const day = date.getDay(); // 0 is Sunday, 6 is Saturday
-  return day === 0 || day === 6;
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    timeZone: ATTENDANCE_TIME_ZONE,
+    weekday: 'short',
+  }).format(date);
+  return weekday === 'Sat' || weekday === 'Sun';
 }
 
 /**
@@ -33,7 +72,8 @@ export function evaluateAttendance(
   startMinute: number = WORK_START_MINUTE,
   toleranceMinutes: number = WORK_TOLERANCE_MINUTES
 ): AttendanceEvaluation {
-  const clockInMinutes = clockInDate.getHours() * 60 + clockInDate.getMinutes();
+  const jakartaParts = getJakartaDateParts(clockInDate);
+  const clockInMinutes = Number(jakartaParts.hour) * 60 + Number(jakartaParts.minute);
   const scheduledMinutes = startHour * 60 + startMinute;
   const cutoffMinutes = scheduledMinutes + toleranceMinutes;
 
@@ -113,6 +153,7 @@ export function formatIndoDate(dateInput: string | Date): string {
   try {
     const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
     return d.toLocaleDateString('id-ID', {
+      timeZone: ATTENDANCE_TIME_ZONE,
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -131,6 +172,7 @@ export function formatIndoTime(dateInput: string | Date): string {
     const d = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
     return (
       d.toLocaleTimeString('id-ID', {
+        timeZone: ATTENDANCE_TIME_ZONE,
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
