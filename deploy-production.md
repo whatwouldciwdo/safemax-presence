@@ -147,50 +147,37 @@ curl -I http://127.0.0.1:3010
 
 Respons `HTTP/1.1 200 OK`, `HTTP/1.1 307 Temporary Redirect`, atau respons HTTP Next.js lain menandakan server dapat dijangkau. Hentikan proses sementara dengan `Ctrl+C`.
 
-## 6. Jalankan aplikasi menggunakan systemd
+## 6. Jalankan aplikasi menggunakan PM2
 
-Periksa lokasi `npm`:
-
-```bash
-which npm
-```
-
-Contoh berikut mengasumsikan hasilnya `/usr/bin/npm`. Buat service:
+Instal PM2 secara global dan verifikasi instalasinya:
 
 ```bash
-sudo nano /etc/systemd/system/safemax.service
+sudo npm install --global pm2
+pm2 --version
 ```
 
-Isi file berikut. Ganti `USER_UBUNTU` dengan username server yang sebenarnya:
-
-```ini
-[Unit]
-Description=SafeMax Presence Next.js
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=USER_UBUNTU
-Group=USER_UBUNTU
-WorkingDirectory=/opt/safemax-presence
-Environment=NODE_ENV=production
-ExecStart=/usr/bin/npm run start:production
-Restart=always
-RestartSec=5
-TimeoutStopSec=20
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Aktifkan service:
+Jalankan script production dari direktori aplikasi. Jalankan perintah PM2 sebagai user Ubuntu biasa, bukan dengan `sudo`:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now safemax
-sudo systemctl status safemax --no-pager
+cd /opt/safemax-presence
+pm2 start npm --name safemax -- run start:production
+pm2 status
 ```
+
+Simpan daftar proses dan aktifkan PM2 saat Ubuntu melakukan boot:
+
+```bash
+pm2 save
+pm2 startup systemd
+```
+
+Perintah `pm2 startup systemd` akan menampilkan satu perintah lanjutan yang diawali `sudo env ...`. Salin dan jalankan perintah tersebut persis seperti yang ditampilkan, kemudian simpan ulang state PM2:
+
+```bash
+pm2 save
+```
+
+> PM2 menyimpan proses per user. Selalu kelola aplikasi dengan user Ubuntu yang sama dengan user yang menjalankan `pm2 start`; jangan menjalankan `sudo pm2 start`.
 
 Uji kembali:
 
@@ -198,11 +185,11 @@ Uji kembali:
 curl -I http://127.0.0.1:3010
 ```
 
-Perintah log:
+Perintah status dan log:
 
 ```bash
-sudo journalctl -u safemax -n 100 --no-pager
-sudo journalctl -u safemax -f
+pm2 status
+pm2 logs safemax --lines 100
 ```
 
 ## 7. Buat Cloudflare Tunnel
@@ -330,10 +317,10 @@ Periksa aplikasi lokal:
 curl -I http://127.0.0.1:3010
 ```
 
-Periksa kedua service:
+Periksa proses aplikasi dan service tunnel:
 
 ```bash
-sudo systemctl is-active safemax
+pm2 describe safemax
 sudo systemctl is-active cloudflared
 ```
 
@@ -368,8 +355,8 @@ git status --short
 git pull --ff-only origin main
 npm ci
 npm run build:production
-sudo systemctl restart safemax
-sudo systemctl status safemax --no-pager
+pm2 restart safemax
+pm2 status
 ```
 
 `git status --short` seharusnya tidak menampilkan perubahan source code lokal sebelum `git pull`. File `.env.local` tidak akan ditampilkan karena diabaikan oleh `.gitignore` dan tetap tersimpan di server saat source code diperbarui.
@@ -377,7 +364,7 @@ sudo systemctl status safemax --no-pager
 Periksa log setelah update:
 
 ```bash
-sudo journalctl -u safemax -n 100 --no-pager
+pm2 logs safemax --lines 100 --nostream
 ```
 
 Cloudflare Tunnel tidak perlu direstart untuk update aplikasi biasa.
@@ -389,9 +376,9 @@ Cloudflare Tunnel tidak perlu direstart untuk update aplikasi biasa.
 Tunnel aktif, tetapi aplikasi tidak dapat dijangkau. Periksa:
 
 ```bash
-sudo systemctl status safemax --no-pager
+pm2 describe safemax
 curl -I http://127.0.0.1:3010
-sudo journalctl -u safemax -n 100 --no-pager
+pm2 logs safemax --lines 100 --nostream
 ```
 
 Pastikan service tunnel menggunakan `http://localhost:3010`, bukan `https://localhost:3010`.
@@ -424,7 +411,7 @@ Build ulang karena variabel `NEXT_PUBLIC_*` ditanam saat build:
 ```bash
 cd /opt/safemax-presence
 npm run build:production
-sudo systemctl restart safemax
+pm2 restart safemax
 ```
 
 ### Tampilan masih versi lama
@@ -440,7 +427,7 @@ sudo ss -lntp | grep 3010
 ### Restart seluruh layanan
 
 ```bash
-sudo systemctl restart safemax
+pm2 restart safemax
 sudo systemctl restart cloudflared
 ```
 
@@ -450,7 +437,7 @@ sudo systemctl restart cloudflared
 - [ ] `.env.local` production sudah dibuat dan diamankan dengan `chmod 600`.
 - [ ] `npm ci` berhasil.
 - [ ] `npm run build:production` berhasil.
-- [ ] Service `safemax` aktif.
+- [ ] Proses PM2 `safemax` berstatus `online`.
 - [ ] `curl http://127.0.0.1:3010` berhasil.
 - [ ] Tunnel `safemax-ubuntu` berstatus Healthy.
 - [ ] Public hostname mengarah ke `http://localhost:3010`.
