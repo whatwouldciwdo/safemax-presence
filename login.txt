@@ -1,0 +1,40 @@
+SAFEMAX PRESENCE - DAFTAR AKUN LOGIN
+=====================================
+
+Login dapat menggunakan Username atau NIP.
+
+1. Administrator
+   Username : admin
+   NIP      : ADM-001
+   Password : admin123
+   Role     : Administrator
+
+2. Alpin Alpiansyah
+   Username : alpin
+   NIP      : 021
+   Password : 021
+   Role     : Karyawan
+
+3. Ricky Hendra Firmansyah
+   Username : ricky
+   NIP      : 022
+   Password : 022
+   Role     : Karyawan
+
+4. Johari
+   Username : johari
+   NIP      : 023
+   Password : 023
+   Role     : Karyawan
+
+5. Agam Fuady
+   Username : agam
+   NIP      : 024
+   Password : 024
+   Role     : Karyawan
+
+6. Nofiatul Jannah
+   Username : nofiatul
+   NIP      : 025
+   Password : 025
+   Role     : Karyawan
