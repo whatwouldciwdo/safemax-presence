@@ -25,7 +25,7 @@ import {
   formatIndoTime,
   evaluateAttendance,
   calculateEmployeeQuota,
-  MANDATORY_MONTHLY_DAYS,
+  getMonthlyTargetDays,
   getJakartaDateKey,
   getJakartaMonthKey,
 } from '@/lib/attendance-utils';
@@ -54,7 +54,7 @@ export default function AbsensiPage() {
 
       const history = await AttendanceService.getEmployeeHistory(user.id);
       const currentYearMonth = getJakartaMonthKey();
-      const quota = calculateEmployeeQuota(history, user, currentYearMonth, MANDATORY_MONTHLY_DAYS);
+      const quota = calculateEmployeeQuota(history, user, currentYearMonth, getMonthlyTargetDays(user));
       setMonthlyQuota(quota);
     } catch (err) {
       console.error(err);
@@ -181,8 +181,8 @@ export default function AbsensiPage() {
                 }`}
               >
                 {monthlyQuota.isTargetMet
-                  ? `✓ Target Terpenuhi (${monthlyQuota.totalPresentDays}/24)`
-                  : `Kurang ${monthlyQuota.remainingDays} Hari (${monthlyQuota.totalPresentDays}/24)`}
+                  ? `✓ Target Terpenuhi (${monthlyQuota.totalPresentDays}/${monthlyQuota.targetDays})`
+                  : `Kurang ${monthlyQuota.remainingDays} Hari (${monthlyQuota.totalPresentDays}/${monthlyQuota.targetDays})`}
               </span>
             </div>
           </div>
@@ -190,7 +190,7 @@ export default function AbsensiPage() {
           {/* Neumorphic Progress Bar */}
           <div className="space-y-1.5 pt-1">
             <div className="flex justify-between text-xs font-bold text-slate-600">
-              <span>Progres Kehadiran: {monthlyQuota.totalPresentDays} dari 24 Hari Kerja</span>
+              <span>Progres Kehadiran: {monthlyQuota.totalPresentDays} dari {monthlyQuota.targetDays} Hari Kerja</span>
               <span>{monthlyQuota.progressPercentage}%</span>
             </div>
             <div className="w-full h-3.5 neu-inset rounded-full p-0.5 overflow-hidden">
@@ -200,7 +200,7 @@ export default function AbsensiPage() {
                     ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
                     : 'bg-gradient-to-r from-blue-600 to-cyan-400'
                 }`}
-                style={{ width: `${Math.min(100, (monthlyQuota.totalPresentDays / 24) * 100)}%` }}
+                style={{ width: `${Math.min(100, (monthlyQuota.totalPresentDays / monthlyQuota.targetDays) * 100)}%` }}
               />
             </div>
           </div>

@@ -1,11 +1,23 @@
 import { Attendance, AttendanceStatus, Employee, EmployeeMonthlyQuota } from './types';
 
 export const MANDATORY_MONTHLY_DAYS = 24;
+export const ADMINISTRATION_MONTHLY_DAYS = 20;
 export const WORK_START_HOUR = 7; // Jam 07:00 WIB
 export const WORK_START_MINUTE = 0;
 export const WORK_TOLERANCE_MINUTES = 15; // Hingga 07:15 WIB
 export const WORK_END_HOUR = 16; // Jam 16:00 WIB (Jam 4 sore)
 export const ATTENDANCE_TIME_ZONE = 'Asia/Jakarta';
+
+/** Rekap menampilkan satu nama departemen untuk seluruh bagian non-Administrasi. */
+export function getReportDepartment(department: string): string {
+  return department.trim().toLowerCase() === 'administrasi' ? 'Administrasi' : 'Operasional';
+}
+
+export function getMonthlyTargetDays(employee: Pick<Employee, 'department'>): number {
+  return getReportDepartment(employee.department) === 'Administrasi'
+    ? ADMINISTRATION_MONTHLY_DAYS
+    : MANDATORY_MONTHLY_DAYS;
+}
 
 function getJakartaDateParts(date: Date): Record<string, string> {
   return Object.fromEntries(
@@ -115,7 +127,7 @@ export function calculateEmployeeQuota(
   attendances: Attendance[],
   employee: Employee,
   yearMonth: string, // "YYYY-MM" e.g. "2026-10"
-  targetDays: number = MANDATORY_MONTHLY_DAYS
+  targetDays: number = getMonthlyTargetDays(employee)
 ): EmployeeMonthlyQuota {
   const monthAttendances = attendances.filter(
     (att) => att.employee_id === employee.id && att.date.startsWith(yearMonth)

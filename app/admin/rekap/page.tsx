@@ -26,7 +26,6 @@ import {
 } from 'lucide-react';
 import { NeuCard } from '@/components/ui/NeuCard';
 import { NeuButton } from '@/components/ui/NeuButton';
-import { NeuBadge } from '@/components/ui/NeuBadge';
 import { AttendanceService } from '@/lib/attendance-service';
 import {
   Attendance,
@@ -38,10 +37,11 @@ import {
   formatIndoDate,
   formatIndoTime,
   calculateEmployeeQuota,
-  MANDATORY_MONTHLY_DAYS,
   addDaysToDateKey,
   getJakartaDateKey,
   getJakartaMonthKey,
+  getMonthlyTargetDays,
+  getReportDepartment,
 } from '@/lib/attendance-utils';
 
 export default function RekapAbsensiPage() {
@@ -112,13 +112,13 @@ export default function RekapAbsensiPage() {
 
   const quotasList: EmployeeMonthlyQuota[] = monthToUse
     ? activeStaff.map((emp) =>
-        calculateEmployeeQuota(attendances, emp, monthToUse, MANDATORY_MONTHLY_DAYS)
+        calculateEmployeeQuota(attendances, emp, monthToUse, getMonthlyTargetDays(emp))
       )
     : [];
 
   // Filtered Quota List
   const filteredQuotas = quotasList.filter((item) => {
-    if (department !== 'all' && item.employee.department !== department) {
+    if (department !== 'all' && getReportDepartment(item.employee.department) !== department) {
       return false;
     }
     if (search) {
@@ -127,10 +127,10 @@ export default function RekapAbsensiPage() {
       const matchCode = item.employee.employee_code.toLowerCase().includes(q);
       if (!matchName && !matchCode) return false;
     }
-    if (quotaStatusFilter === 'met' && item.totalPresentDays < MANDATORY_MONTHLY_DAYS) {
+    if (quotaStatusFilter === 'met' && item.totalPresentDays < item.targetDays) {
       return false;
     }
-    if (quotaStatusFilter === 'pending' && item.totalPresentDays >= MANDATORY_MONTHLY_DAYS) {
+    if (quotaStatusFilter === 'pending' && item.totalPresentDays >= item.targetDays) {
       return false;
     }
     if (quotaStatusFilter === 'surplus' && item.surplusDays <= 0) {
@@ -162,7 +162,6 @@ export default function RekapAbsensiPage() {
       'Bulan Periode',
       'Total Hari Masuk',
       'Target Wajib (Hari)',
-      'Status Capaian Target',
       'Kekurangan Hari',
       'Surplus Hari',
       'Persentase Capaian (%)',
@@ -174,11 +173,10 @@ export default function RekapAbsensiPage() {
     const rows = filteredQuotas.map((q) => [
       `"${q.employee.employee_code}"`,
       `"${q.employee.name}"`,
-      `"${q.employee.department}"`,
+      `"${getReportDepartment(q.employee.department)}"`,
       `"${q.month}"`,
       `"${q.totalPresentDays}"`,
       `"${q.targetDays}"`,
-      `"${q.isTargetMet ? 'Tercapai (Memenuhi Syarat)' : 'Kurang / Belum Capai'}"`,
       `"${q.remainingDays}"`,
       `"${q.surplusDays}"`,
       `"${q.progressPercentage}%"`,
@@ -221,7 +219,7 @@ export default function RekapAbsensiPage() {
       });
       const monthlyQuotas = activeStaff
         .map((employee) =>
-          calculateEmployeeQuota(monthlyAttendances, employee, monthToUse, MANDATORY_MONTHLY_DAYS)
+          calculateEmployeeQuota(monthlyAttendances, employee, monthToUse, getMonthlyTargetDays(employee))
         )
         .sort((a, b) => a.employee.name.localeCompare(b.employee.name));
       const logoResponse = await fetch('/logo.png');
@@ -269,8 +267,6 @@ export default function RekapAbsensiPage() {
       'Jam Masuk (Clock In)',
       'Jam Pulang (Clock Out)',
       'Total Jam Kerja',
-      'Status Kehadiran',
-      'Catatan',
       'Link Selfie Masuk',
       'Link Selfie Pulang',
     ];
@@ -283,14 +279,12 @@ export default function RekapAbsensiPage() {
       return [
         `"${item.employee?.employee_code || '-'}"`,
         `"${item.employee?.name || '-'}"`,
-        `"${item.employee?.department || '-'}"`,
+      `"${item.employee ? getReportDepartment(item.employee.department) : '-'}"`,
         `"${item.date}"`,
         `"${dayName}"`,
         `"${clockInStr}"`,
         `"${clockOutStr}"`,
         `"${item.work_hours || 0}"`,
-        `"${item.status === 'on_time' ? 'Tepat Waktu' : 'Terlambat'}"`,
-        `"${(item.notes || '').replace(/"/g, '""')}"`,
         `"${item.selfie_in_url || '-'}"`,
         `"${item.selfie_out_url || '-'}"`,
       ];
@@ -307,7 +301,7 @@ export default function RekapAbsensiPage() {
     document.body.removeChild(link);
   };
 
-  const departments = Array.from(new Set(employees.map((e) => e.department).filter(Boolean)));
+  const departments = Array.from(new Set(employees.map((e) => getReportDepartment(e.department)).filter(Boolean)));
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8 space-y-6 animate-in fade-in duration-300">
@@ -327,7 +321,7 @@ export default function RekapAbsensiPage() {
             </h1>
           </div>
           <p className="text-sm text-slate-500">
-            Pantau pemenuhan <strong>target minimal 24 hari masuk per bulan</strong> dan tarik data rekap absensi.
+            Pantau pemenuhan <strong>target kehadiran per departemen</strong> dan tarik data rekap absensi.
           </p>
         </div>
 
@@ -546,7 +540,7 @@ export default function RekapAbsensiPage() {
                         <div>
                           <p className="font-bold text-slate-800 text-xs">{item.employee.name}</p>
                           <p className="text-[10px] text-slate-500">
-                            {item.employee.employee_code} • {item.employee.department}
+                            {item.employee.employee_code} • {getReportDepartment(item.employee.department)}
                           </p>
                         </div>
                       </div>
@@ -566,7 +560,7 @@ export default function RekapAbsensiPage() {
                     {/* Progress Bar */}
                     <div className="space-y-1">
                       <div className="flex justify-between text-[11px] font-bold text-slate-600">
-                        <span>Hadir: {item.totalPresentDays} / 24 Hari</span>
+                        <span>Hadir: {item.totalPresentDays} / {item.targetDays} Hari</span>
                         <span>{item.progressPercentage}%</span>
                       </div>
                       <div className="w-full h-2.5 neu-inset rounded-full p-0.5 overflow-hidden">
@@ -599,7 +593,7 @@ export default function RekapAbsensiPage() {
                     <th className="py-3 px-3">NIK</th>
                     <th className="py-3 px-3">Pegawai</th>
                     <th className="py-3 px-3">Departemen</th>
-                    <th className="py-3 px-3">Kehadiran (Target 24)</th>
+                    <th className="py-3 px-3">Kehadiran (Target)</th>
                     <th className="py-3 px-3 w-48">Progres Kuota</th>
                     <th className="py-3 px-3">Status Capaian</th>
                     <th className="py-3 px-3">Keterangan</th>
@@ -629,12 +623,12 @@ export default function RekapAbsensiPage() {
                             <span className="font-bold text-slate-800">{item.employee.name}</span>
                           </div>
                         </td>
-                        <td className="py-3.5 px-3 text-slate-600">{item.employee.department}</td>
+                        <td className="py-3.5 px-3 text-slate-600">{getReportDepartment(item.employee.department)}</td>
                         <td className="py-3.5 px-3 font-bold text-slate-800">
                           <span className="text-sm font-black text-blue-700">
                             {item.totalPresentDays}
                           </span>{' '}
-                          / 24 Hari
+                          / {item.targetDays} Hari
                         </td>
                         <td className="py-3.5 px-3">
                           <div className="space-y-1">
@@ -649,7 +643,7 @@ export default function RekapAbsensiPage() {
                                     : 'bg-blue-600'
                                 }`}
                                 style={{
-                                  width: `${Math.min(100, (item.totalPresentDays / 24) * 100)}%`,
+                                  width: `${Math.min(100, (item.totalPresentDays / item.targetDays) * 100)}%`,
                                 }}
                               />
                             </div>
@@ -659,12 +653,12 @@ export default function RekapAbsensiPage() {
                           {item.isTargetMet ? (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-800 border border-emerald-500/30">
                               <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                              Target Tercapai ({item.totalPresentDays}/24)
+                              Target Tercapai ({item.totalPresentDays}/{item.targetDays})
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-500/15 text-rose-800 border border-rose-500/30">
                               <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                              Kurang {item.remainingDays} Hari ({item.totalPresentDays}/24)
+                              Kurang {item.remainingDays} Hari ({item.totalPresentDays}/{item.targetDays})
                             </span>
                           )}
                         </td>
@@ -824,10 +818,9 @@ export default function RekapAbsensiPage() {
                       <div>
                         <p className="font-bold text-slate-800 text-xs">{item.employee?.name || '-'}</p>
                         <p className="text-[10px] text-slate-500">
-                          {item.employee?.employee_code} • {item.employee?.department}
+                          {item.employee?.employee_code} • {item.employee ? getReportDepartment(item.employee.department) : '-'}
                         </p>
                       </div>
-                      <NeuBadge status={item.status} size="sm" />
                     </div>
 
                     <div className="flex items-center justify-between text-[11px] text-slate-600 px-0.5">
@@ -906,23 +899,21 @@ export default function RekapAbsensiPage() {
                     <th className="py-3 px-3">Tanggal</th>
                     <th className="py-3 px-3">Clock In (07:00)</th>
                     <th className="py-3 px-3">Clock Out (16:00)</th>
-                    <th className="py-3 px-3">Status</th>
                     <th className="py-3 px-3">Selfie In</th>
                     <th className="py-3 px-3">Selfie Out</th>
-                    <th className="py-3 px-3">Catatan</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200/40">
                   {loading ? (
                     <tr>
-                      <td colSpan={10} className="py-12 text-center text-slate-500">
+                      <td colSpan={8} className="py-12 text-center text-slate-500">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto text-blue-600 mb-2" />
                         Menarik data presensi...
                       </td>
                     </tr>
                   ) : attendances.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-12 text-center text-slate-400">
+                      <td colSpan={8} className="py-12 text-center text-slate-400">
                         Tidak ada data presensi yang sesuai dengan filter.
                       </td>
                     </tr>
@@ -936,7 +927,7 @@ export default function RekapAbsensiPage() {
                           {item.employee?.name || 'Karyawan'}
                         </td>
                         <td className="py-3 px-3 text-slate-600">
-                          {item.employee?.department || '-'}
+                          {item.employee ? getReportDepartment(item.employee.department) : '-'}
                         </td>
                         <td className="py-3 px-3 text-slate-700 whitespace-nowrap">
                           {formatIndoDate(item.date)}
@@ -946,9 +937,6 @@ export default function RekapAbsensiPage() {
                         </td>
                         <td className="py-3 px-3 font-semibold text-slate-800 whitespace-nowrap">
                           {item.clock_out ? formatIndoTime(item.clock_out) : '-'}
-                        </td>
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          <NeuBadge status={item.status} size="sm" />
                         </td>
                         <td className="py-3 px-3">
                           {item.selfie_in_url ? (
@@ -991,9 +979,6 @@ export default function RekapAbsensiPage() {
                           ) : (
                             '-'
                           )}
-                        </td>
-                        <td className="py-3 px-3 text-slate-500 max-w-[150px] truncate" title={item.notes || ''}>
-                          {item.notes || '-'}
                         </td>
                       </tr>
                     ))

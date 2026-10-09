@@ -18,7 +18,7 @@ import {
   WidthType,
 } from 'docx';
 import { Attendance, EmployeeMonthlyQuota } from './types';
-import { formatIndoDate, formatIndoTime, getJakartaDateKey } from './attendance-utils';
+import { formatIndoDate, formatIndoTime, getJakartaDateKey, getReportDepartment } from './attendance-utils';
 
 const NAVY = '17365D';
 const BLUE = 'D9EAF7';
@@ -72,15 +72,6 @@ function monthLabel(month: string): string {
   );
 }
 
-function statusLabel(status: Attendance['status']): string {
-  return {
-    on_time: 'Tepat Waktu',
-    late: 'Terlambat',
-    lembur: 'Lembur',
-    absent: 'Tidak Hadir',
-  }[status];
-}
-
 export interface MonthlyAttendanceDocxOptions {
   month: string;
   attendances: Attendance[];
@@ -100,8 +91,8 @@ export async function createMonthlyAttendanceDocx({
   const sortedAttendances = [...attendances].sort(
     (a, b) => a.date.localeCompare(b.date) || (a.employee?.name || '').localeCompare(b.employee?.name || '')
   );
-  const widths = [500, 1050, 2200, 1500, 1200, 1050, 1050, 1100, 1100, 1700];
-  const headers = ['No.', 'Tanggal', 'Nama Karyawan', 'NIK', 'Departemen', 'Masuk', 'Pulang', 'Status', 'Jam Kerja', 'Catatan'];
+  const widths = [650, 1450, 2600, 1600, 1500, 1300, 1300, 1500];
+  const headers = ['No.', 'Tanggal', 'Nama Karyawan', 'NIK', 'Departemen', 'Masuk', 'Pulang', 'Jam Kerja'];
 
   const detailRows = sortedAttendances.map(
     (item, index) =>
@@ -112,12 +103,10 @@ export async function createMonthlyAttendanceDocx({
           cell(formatIndoDate(`${item.date}T12:00:00+07:00`).replace(/^\w+,\s*/, ''), widths[1], { shade: index % 2 ? LIGHT_BLUE : WHITE }),
           cell(item.employee?.name || '-', widths[2], { shade: index % 2 ? LIGHT_BLUE : WHITE }),
           cell(item.employee?.employee_code || '-', widths[3], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(item.employee?.department || '-', widths[4], { shade: index % 2 ? LIGHT_BLUE : WHITE }),
+          cell(item.employee ? getReportDepartment(item.employee.department) : '-', widths[4], { shade: index % 2 ? LIGHT_BLUE : WHITE }),
           cell(item.clock_in ? formatIndoTime(item.clock_in).replace(':00 WIB', ' WIB') : '-', widths[5], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
           cell(item.clock_out ? formatIndoTime(item.clock_out).replace(':00 WIB', ' WIB') : '-', widths[6], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(statusLabel(item.status), widths[7], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(`${Number(item.work_hours || 0).toFixed(2)} jam`, widths[8], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(item.notes || '-', widths[9], { shade: index % 2 ? LIGHT_BLUE : WHITE }),
+          cell(`${Number(item.work_hours || 0).toFixed(2)} jam`, widths[7], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
         ],
       })
   );
@@ -149,6 +138,46 @@ export async function createMonthlyAttendanceDocx({
       tableHeader: true,
       children: labels.map((label, index) => cell(label, columnWidths[index], { header: true, align: AlignmentType.CENTER })),
     });
+
+  const employeeDetailSections = quotas.flatMap((quota, employeeIndex) => {
+    const employeeAttendances = sortedAttendances.filter(
+      (attendance) => attendance.employee_id === quota.employee.id
+    );
+    const employeeRows = detailRows.filter((_, rowIndex) =>
+      sortedAttendances[rowIndex].employee_id === quota.employee.id
+    );
+
+    return [
+      new Paragraph({
+        pageBreakBefore: employeeIndex > 0,
+        spacing: { before: employeeIndex === 0 ? 220 : 0, after: 80 },
+        children: [text(`DATA KEHADIRAN: ${quota.employee.name.toUpperCase()}`, true, NAVY, 22)],
+      }),
+      new Paragraph({
+        spacing: { after: 120 },
+        children: [
+          text(
+            `NIK: ${quota.employee.employee_code}  •  Departemen: ${getReportDepartment(quota.employee.department)}  •  Target: ${quota.targetDays} hari  •  Hadir: ${quota.totalPresentDays} hari`,
+            false,
+            '475569',
+            17
+          ),
+        ],
+      }),
+      employeeAttendances.length > 0
+        ? new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            layout: TableLayoutType.FIXED,
+            borders,
+            rows: [headerRow(headers, widths), ...employeeRows],
+          })
+        : new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 300 },
+            children: [text('Belum ada catatan presensi karyawan ini pada periode tersebut.', false, '64748B', 20)],
+          }),
+    ];
+  });
 
   const totalHours = quotas.reduce((sum, quota) => sum + quota.totalWorkHours, 0);
   const metTarget = quotas.filter((quota) => quota.isTargetMet).length;
@@ -244,10 +273,7 @@ export async function createMonthlyAttendanceDocx({
             borders,
             rows: [headerRow(summaryHeaders, summaryWidths), ...summaryRows],
           }),
-          new Paragraph({ pageBreakBefore: true, spacing: { after: 100 }, children: [text('RINCIAN PRESENSI HARIAN', true, NAVY, 21)] }),
-          sortedAttendances.length > 0
-            ? new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, layout: TableLayoutType.FIXED, borders, rows: [headerRow(headers, widths), ...detailRows] })
-            : new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 400 }, children: [text('Belum ada catatan presensi pada periode ini.', false, '64748B', 20)] }),
+          ...employeeDetailSections,
           new Paragraph({ spacing: { before: 260, after: 20 }, children: [text(`Dicetak pada: ${formatIndoDate(`${getJakartaDateKey()}T12:00:00+07:00`)}`, false, '64748B', 16)] }),
           new Paragraph({ spacing: { after: 0 }, children: [text(`Dicetak oleh: ${generatedBy} (Administrator)`, false, '64748B', 16)] }),
         ],

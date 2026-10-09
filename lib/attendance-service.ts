@@ -1,7 +1,7 @@
 import { createClient, isSupabaseEnabled } from './supabase/client';
 import { Attendance, AttendanceFilter, DashboardStats, Employee } from './types';
 import { INITIAL_EMPLOYEES, INITIAL_ATTENDANCES } from './mock-data';
-import { calculateWorkHours, evaluateAttendance, getJakartaDateKey } from './attendance-utils';
+import { calculateWorkHours, evaluateAttendance, getJakartaDateKey, getReportDepartment } from './attendance-utils';
 import { findLocalAccount, updateLocalPassword } from './local-accounts';
 
 const STORAGE_KEY_ATTENDANCES = 'safemax_attendances_v2';
@@ -401,7 +401,10 @@ export class AttendanceService {
 
     // Filter by search / department if provided
     return enriched.filter((item) => {
-      if (filter?.department && item.employee?.department !== filter.department) {
+      if (
+        filter?.department &&
+        (!item.employee || getReportDepartment(item.employee.department) !== filter.department)
+      ) {
         return false;
       }
       if (filter?.search) {
