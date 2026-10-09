@@ -78,6 +78,17 @@ export interface MonthlyAttendanceDocxOptions {
   quotas: EmployeeMonthlyQuota[];
   generatedBy: string;
   logo: ArrayBuffer;
+  title?: string;
+  includePhotos?: boolean;
+}
+
+async function loadImage(url: string): Promise<ArrayBuffer | null> {
+  try {
+    const response = await fetch(url);
+    return response.ok ? await response.arrayBuffer() : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function createMonthlyAttendanceDocx({
@@ -86,6 +97,8 @@ export async function createMonthlyAttendanceDocx({
   quotas,
   generatedBy,
   logo,
+  title = 'REKAP PRESENSI BULANAN',
+  includePhotos = false,
 }: MonthlyAttendanceDocxOptions): Promise<Blob> {
   const period = monthLabel(month);
   const sortedAttendances = [...attendances].sort(
@@ -94,6 +107,12 @@ export async function createMonthlyAttendanceDocx({
   const widths = [650, 1450, 2600, 1600, 1500, 1300, 1300, 1500];
   const headers = ['No.', 'Tanggal', 'Nama Karyawan', 'NIK', 'Departemen', 'Masuk', 'Pulang', 'Jam Kerja'];
 
+  const photoData = includePhotos
+    ? await Promise.all(sortedAttendances.map(async (item) => ({
+        in: item.selfie_in_url ? await loadImage(item.selfie_in_url) : null,
+        out: item.selfie_out_url ? await loadImage(item.selfie_out_url) : null,
+      })))
+    : [];
   const detailRows = sortedAttendances.map(
     (item, index) =>
       new TableRow({
@@ -146,6 +165,55 @@ export async function createMonthlyAttendanceDocx({
     const employeeRows = detailRows.filter((_, rowIndex) =>
       sortedAttendances[rowIndex].employee_id === quota.employee.id
     );
+    const employeePhotoSections = includePhotos
+      ? sortedAttendances.flatMap((attendance, attendanceIndex) => {
+          if (attendance.employee_id !== quota.employee.id) return [];
+          const photos = photoData[attendanceIndex];
+          return [
+            new Paragraph({
+              spacing: { before: 100, after: 40 },
+              children: [text(`Foto ${attendance.date}`, true, TEXT, 16)],
+            }),
+            new Table({
+              width: { size: 100, type: WidthType.PERCENTAGE },
+              layout: TableLayoutType.FIXED,
+              borders,
+              rows: [
+                new TableRow({
+                  children: [
+                    new TableCell({
+                      width: { size: 4800, type: WidthType.DXA },
+                      children: [
+                        new Paragraph({
+                          alignment: AlignmentType.CENTER,
+                          children: [
+                            photos?.in
+                              ? new ImageRun({ data: photos.in, transformation: { width: 110, height: 110 }, type: 'png' })
+                              : text('Selfie masuk tidak tersedia', false, '64748B', 15),
+                          ],
+                        }),
+                      ],
+                    }),
+                    new TableCell({
+                      width: { size: 4800, type: WidthType.DXA },
+                      children: [
+                        new Paragraph({
+                          alignment: AlignmentType.CENTER,
+                          children: [
+                            photos?.out
+                              ? new ImageRun({ data: photos.out, transformation: { width: 110, height: 110 }, type: 'png' })
+                              : text('Selfie pulang tidak tersedia', false, '64748B', 15),
+                          ],
+                        }),
+                      ],
+                    }),
+                  ],
+                }),
+              ],
+            }),
+          ];
+        })
+      : [];
 
     return [
       new Paragraph({
@@ -176,6 +244,7 @@ export async function createMonthlyAttendanceDocx({
             spacing: { before: 300 },
             children: [text('Belum ada catatan presensi karyawan ini pada periode tersebut.', false, '64748B', 20)],
           }),
+      ...employeePhotoSections,
     ];
   });
 
@@ -236,7 +305,7 @@ export async function createMonthlyAttendanceDocx({
                     borders: { top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE }, left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE } },
                     verticalAlign: VerticalAlign.CENTER,
                     children: [
-                      new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80 }, children: [text('REKAP PRESENSI BULANAN', true, NAVY, 30)] }),
+                      new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 80 }, children: [text(title, true, NAVY, 30)] }),
                       new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 30 }, children: [text('SAFEMAX', true, TEXT, 24)] }),
                       new Paragraph({ alignment: AlignmentType.CENTER, children: [text(`Periode ${period}`, true, '475569', 20)] }),
                     ],

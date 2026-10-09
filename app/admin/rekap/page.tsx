@@ -59,6 +59,7 @@ export default function RekapAbsensiPage() {
   const [department, setDepartment] = useState('all');
   const [status, setStatus] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('all');
 
   // Filters State for Monthly Quota (Target 24 Hari)
   const [selectedMonth, setSelectedMonth] = useState('');
@@ -95,7 +96,9 @@ export default function RekapAbsensiPage() {
         dateTo: overrideFilter?.dateTo ?? (dateTo || undefined),
         department: department === 'all' ? undefined : department,
         status: status === 'all' ? undefined : (status as any),
-        search: search || undefined,
+        search: selectedEmployeeId !== 'all'
+          ? employees.find((employee) => employee.id === selectedEmployeeId)?.name
+          : search || undefined,
       };
       const data = await AttendanceService.getAllAttendances(filter);
       setAttendances(data);
@@ -118,6 +121,7 @@ export default function RekapAbsensiPage() {
 
   // Filtered Quota List
   const filteredQuotas = quotasList.filter((item) => {
+    if (selectedEmployeeId !== 'all' && item.employee.id !== selectedEmployeeId) return false;
     if (department !== 'all' && getReportDepartment(item.employee.department) !== department) {
       return false;
     }
@@ -234,11 +238,58 @@ export default function RekapAbsensiPage() {
         quotas: monthlyQuotas,
         generatedBy: currentUser.name,
         logo: await logoResponse.arrayBuffer(),
+        title: 'REKAP PRESENSI BULANAN',
       });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.download = getMonthlyAttendanceFilename(monthToUse);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      console.error(error);
+      alert(error instanceof Error ? error.message : 'Gagal membuat dokumen Word.');
+    } finally {
+      setExportingWord(false);
+    }
+  };
+
+  const handleExportDailyWord = async () => {
+    const currentUser = AttendanceService.getCurrentUser();
+    if (!currentUser || currentUser.role !== 'admin') {
+      alert('Ekspor Word hanya dapat dilakukan oleh administrator.');
+      return;
+    }
+    if (attendances.length === 0) {
+      alert('Tidak ada data log harian untuk diexport.');
+      return;
+    }
+    setExportingWord(true);
+    try {
+      const logoResponse = await fetch('/logo.png');
+      if (!logoResponse.ok) throw new Error('Logo perusahaan tidak dapat dimuat.');
+      const { createMonthlyAttendanceDocx } = await import('@/lib/monthly-attendance-docx');
+      const selectedEmployees = activeStaff.filter(
+        (employee) => selectedEmployeeId === 'all' || employee.id === selectedEmployeeId
+      );
+      const quotas = selectedEmployees.map((employee) =>
+        calculateEmployeeQuota(attendances, employee, selectedMonth || getJakartaMonthKey(), getMonthlyTargetDays(employee))
+      );
+      const blob = await createMonthlyAttendanceDocx({
+        month: selectedMonth || getJakartaMonthKey(),
+        attendances,
+        quotas,
+        generatedBy: currentUser.name,
+        logo: await logoResponse.arrayBuffer(),
+        title: 'LOG HARIAN & FOTO SELFIE',
+        includePhotos: true,
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `log-harian-foto-selfie_${dateFrom}_sd_${dateTo}.docx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -351,16 +402,16 @@ export default function RekapAbsensiPage() {
             </NeuButton>
           </div>
         ) : (
-          <NeuButton
-            variant="primary"
-            size="md"
-            onClick={handleExportDailyCSV}
-            disabled={attendances.length === 0}
-            className="shadow-md"
-          >
-            <FileDown className="w-4 h-4" />
-            <span>Export Log Harian (CSV)</span>
-          </NeuButton>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <NeuButton variant="primary" size="md" onClick={handleExportDailyWord} disabled={attendances.length === 0} isLoading={exportingWord} className="shadow-md">
+              <FileText className="w-4 h-4" />
+              <span>Unduh Log Harian (Word)</span>
+            </NeuButton>
+            <NeuButton variant="success" size="md" onClick={handleExportDailyCSV} disabled={attendances.length === 0} className="shadow-md">
+              <FileDown className="w-4 h-4" />
+              <span>Export Log Harian (CSV)</span>
+            </NeuButton>
+          </div>
         )}
       </div>
 
@@ -375,10 +426,7 @@ export default function RekapAbsensiPage() {
           }`}
         >
           <Target className="w-4 h-4 text-emerald-600" />
-          <span>Rekap Kuota Bulanan (Target 24 Hari)</span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 font-extrabold">
-            Wajib 24 Hari
-          </span>
+          <span>Rekap Presensi Bulanan</span>
         </button>
 
         <button
@@ -485,6 +533,14 @@ export default function RekapAbsensiPage() {
                       {dept}
                     </option>
                   ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">Nama Karyawan</label>
+                <select value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)} className="w-full px-3 py-2 neu-input text-xs">
+                  <option value="all">Semua Karyawan</option>
+                  {activeStaff.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
                 </select>
               </div>
 
@@ -766,6 +822,14 @@ export default function RekapAbsensiPage() {
                   <option value="all">Semua Status</option>
                   <option value="on_time">Tepat Waktu (≤ 07:15 WIB)</option>
                   <option value="late">Terlambat (&gt; 07:15 WIB)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">Nama Karyawan</label>
+                <select value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)} className="w-full px-3 py-2 neu-input text-xs">
+                  <option value="all">Semua Karyawan</option>
+                  {activeStaff.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
                 </select>
               </div>
 
