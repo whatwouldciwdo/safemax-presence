@@ -23,6 +23,7 @@ import {
   TrendingUp,
   Sparkles,
   FileText,
+  Trash2,
 } from 'lucide-react';
 import { NeuCard } from '@/components/ui/NeuCard';
 import { NeuButton } from '@/components/ui/NeuButton';
@@ -51,6 +52,7 @@ export default function RekapAbsensiPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(false);
   const [exportingWord, setExportingWord] = useState(false);
+  const [deletingOct7, setDeletingOct7] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; title: string } | null>(null);
 
   // Filters State for Daily Log
@@ -84,9 +86,48 @@ export default function RekapAbsensiPage() {
     setDateTo(toStr);
     setSelectedMonth(monthStr);
 
+    // Otomatis hapus data uji coba 7 Oktober 2026 dari database/storage (resmi dimulai 8 Oktober 2026)
+    AttendanceService.deleteAttendancesByDate('2026-10-07').catch((err) => {
+      console.warn('Auto cleanup 2026-10-07:', err);
+    });
+
     AttendanceService.getEmployees().then(setEmployees);
     fetchData({ dateFrom: fromStr, dateTo: toStr });
   }, [router]);
+
+  const handleDeleteRecord = async (item: Attendance) => {
+    const employeeName = item.employee?.name || 'Karyawan';
+    const dateFormatted = formatIndoDate(item.date);
+    if (!confirm(`Hapus catatan presensi untuk ${employeeName} pada ${dateFormatted}?`)) {
+      return;
+    }
+    try {
+      await AttendanceService.deleteAttendance(item.id);
+      await fetchData();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal menghapus presensi.');
+    }
+  };
+
+  const handleDeleteOct7Trial = async () => {
+    if (
+      !confirm(
+        'Hapus semua data timesheet/presensi pada tanggal 7 Oktober 2026 (uji coba)?\nPresensi resmi tercatat mulai tanggal 8 Oktober 2026.'
+      )
+    ) {
+      return;
+    }
+    setDeletingOct7(true);
+    try {
+      const count = await AttendanceService.deleteAttendancesByDate('2026-10-07');
+      await fetchData();
+      alert(`Berhasil menghapus seluruh timesheet tanggal 7 Oktober 2026 (${count} catatan).`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Gagal menghapus timesheet 7 Oktober.');
+    } finally {
+      setDeletingOct7(false);
+    }
+  };
 
   const fetchData = async (overrideFilter?: Partial<AttendanceFilter>) => {
     setLoading(true);
@@ -217,10 +258,11 @@ export default function RekapAbsensiPage() {
     try {
       const [year, month] = monthToUse.split('-').map(Number);
       const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-      const monthlyAttendances = await AttendanceService.getAllAttendances({
+      const rawAttendances = await AttendanceService.getAllAttendances({
         dateFrom: `${monthToUse}-01`,
         dateTo: `${monthToUse}-${String(lastDay).padStart(2, '0')}`,
       });
+      const monthlyAttendances = rawAttendances.filter((item) => item.date !== '2026-10-07');
       const monthlyQuotas = activeStaff
         .map((employee) =>
           calculateEmployeeQuota(monthlyAttendances, employee, monthToUse, getMonthlyTargetDays(employee))
@@ -262,7 +304,8 @@ export default function RekapAbsensiPage() {
       alert('Ekspor Word hanya dapat dilakukan oleh administrator.');
       return;
     }
-    if (attendances.length === 0) {
+    const filteredDailyAttendances = attendances.filter((item) => item.date !== '2026-10-07');
+    if (filteredDailyAttendances.length === 0) {
       alert('Tidak ada data log harian untuk diexport.');
       return;
     }
@@ -275,11 +318,11 @@ export default function RekapAbsensiPage() {
         (employee) => selectedEmployeeId === 'all' || employee.id === selectedEmployeeId
       );
       const quotas = selectedEmployees.map((employee) =>
-        calculateEmployeeQuota(attendances, employee, selectedMonth || getJakartaMonthKey(), getMonthlyTargetDays(employee))
+        calculateEmployeeQuota(filteredDailyAttendances, employee, selectedMonth || getJakartaMonthKey(), getMonthlyTargetDays(employee))
       );
       const blob = await createMonthlyAttendanceDocx({
         month: selectedMonth || getJakartaMonthKey(),
-        attendances,
+        attendances: filteredDailyAttendances,
         quotas,
         generatedBy: currentUser.name,
         logo: await logoResponse.arrayBuffer(),
@@ -304,7 +347,8 @@ export default function RekapAbsensiPage() {
 
   // Export Daily Log CSV
   const handleExportDailyCSV = () => {
-    if (attendances.length === 0) {
+    const filteredAttendances = attendances.filter((item) => item.date !== '2026-10-07');
+    if (filteredAttendances.length === 0) {
       alert('Tidak ada data untuk diexport.');
       return;
     }
@@ -322,7 +366,7 @@ export default function RekapAbsensiPage() {
       'Link Selfie Pulang',
     ];
 
-    const rows = attendances.map((item) => {
+    const rows = filteredAttendances.map((item) => {
       const dayName = new Date(item.date).toLocaleDateString('id-ID', { weekday: 'long' });
       const clockInStr = item.clock_in ? new Date(item.clock_in).toLocaleTimeString('id-ID') : '-';
       const clockOutStr = item.clock_out ? new Date(item.clock_out).toLocaleTimeString('id-ID') : '-';
@@ -747,24 +791,37 @@ export default function RekapAbsensiPage() {
         <div className="space-y-6">
           {/* Filter Panel */}
           <NeuCard className="space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200/50">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200/50 gap-2">
               <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
                 <Filter className="w-4 h-4 text-blue-600" />
                 Parameter Penarikan Log Harian
               </div>
-              <button
-                onClick={() => {
-                  const today = getJakartaDateKey();
-                  setDateFrom(addDaysToDateKey(today, -30));
-                  setDateTo(today);
-                  setDepartment('all');
-                  setStatus('all');
-                  setSearch('');
-                }}
-                className="text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors"
-              >
-                Reset Filter
-              </button>
+              <div className="flex items-center gap-2">
+                <NeuButton
+                  variant="danger"
+                  size="sm"
+                  onClick={handleDeleteOct7Trial}
+                  isLoading={deletingOct7}
+                  className="text-[11px] py-1 px-2.5 shadow-sm"
+                  title="Hapus data presensi uji coba pada 7 Oktober 2026"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus Timesheet 7 Okt</span>
+                </NeuButton>
+                <button
+                  onClick={() => {
+                    const today = getJakartaDateKey();
+                    setDateFrom(addDaysToDateKey(today, -30));
+                    setDateTo(today);
+                    setDepartment('all');
+                    setStatus('all');
+                    setSearch('');
+                  }}
+                  className="text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors"
+                >
+                  Reset Filter
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -885,6 +942,14 @@ export default function RekapAbsensiPage() {
                           {item.employee?.employee_code} • {item.employee ? getReportDepartment(item.employee.department) : '-'}
                         </p>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteRecord(item)}
+                        className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                        title="Hapus data presensi ini"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
 
                     <div className="flex items-center justify-between text-[11px] text-slate-600 px-0.5">
@@ -965,19 +1030,20 @@ export default function RekapAbsensiPage() {
                     <th className="py-3 px-3">Clock Out (16:00)</th>
                     <th className="py-3 px-3">Selfie In</th>
                     <th className="py-3 px-3">Selfie Out</th>
+                    <th className="py-3 px-3 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200/40">
                   {loading ? (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center text-slate-500">
+                      <td colSpan={9} className="py-12 text-center text-slate-500">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto text-blue-600 mb-2" />
                         Menarik data presensi...
                       </td>
                     </tr>
                   ) : attendances.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center text-slate-400">
+                      <td colSpan={9} className="py-12 text-center text-slate-400">
                         Tidak ada data presensi yang sesuai dengan filter.
                       </td>
                     </tr>
@@ -1007,7 +1073,7 @@ export default function RekapAbsensiPage() {
                             <div
                               onClick={() =>
                                 setSelectedPhoto({
-                                  url: item.selfie_in_url!,
+                                 url: item.selfie_in_url!,
                                   title: `Selfie Masuk - ${item.employee?.name}`,
                                 })
                               }
@@ -1043,6 +1109,16 @@ export default function RekapAbsensiPage() {
                           ) : (
                             '-'
                           )}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRecord(item)}
+                            className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                            title="Hapus data presensi ini"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </td>
                       </tr>
                     ))

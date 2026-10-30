@@ -101,56 +101,23 @@ export async function createMonthlyAttendanceDocx({
   includePhotos = false,
 }: MonthlyAttendanceDocxOptions): Promise<Blob> {
   const period = monthLabel(month);
-  const sortedAttendances = [...attendances].sort(
+  const cleanedAttendances = attendances.filter((item) => item.date !== '2026-10-07');
+  const sortedAttendances = [...cleanedAttendances].sort(
     (a, b) => a.date.localeCompare(b.date) || (a.employee?.name || '').localeCompare(b.employee?.name || '')
   );
   const widths = [650, 1450, 2600, 1600, 1500, 1300, 1300, 1500];
   const headers = ['No.', 'Tanggal', 'Nama Karyawan', 'NIK', 'Departemen', 'Masuk', 'Pulang', 'Jam Kerja'];
 
-  const photoData = includePhotos
-    ? await Promise.all(sortedAttendances.map(async (item) => ({
-        in: item.selfie_in_url ? await loadImage(item.selfie_in_url) : null,
-        out: item.selfie_out_url ? await loadImage(item.selfie_out_url) : null,
-      })))
-    : [];
-  const detailRows = sortedAttendances.map(
-    (item, index) =>
-      new TableRow({
-        cantSplit: true,
-        children: [
-          cell(String(index + 1), widths[0], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(formatIndoDate(`${item.date}T12:00:00+07:00`).replace(/^\w+,\s*/, ''), widths[1], { shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(item.employee?.name || '-', widths[2], { shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(item.employee?.employee_code || '-', widths[3], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(item.employee ? getReportDepartment(item.employee.department) : '-', widths[4], { shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(item.clock_in ? formatIndoTime(item.clock_in).replace(':00 WIB', ' WIB') : '-', widths[5], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(item.clock_out ? formatIndoTime(item.clock_out).replace(':00 WIB', ' WIB') : '-', widths[6], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(`${Number(item.work_hours || 0).toFixed(2)} jam`, widths[7], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-        ],
+  const photoMap = new Map<string, { in: ArrayBuffer | null; out: ArrayBuffer | null }>();
+  if (includePhotos) {
+    await Promise.all(
+      sortedAttendances.map(async (item) => {
+        const inPhoto = item.selfie_in_url ? await loadImage(item.selfie_in_url) : null;
+        const outPhoto = item.selfie_out_url ? await loadImage(item.selfie_out_url) : null;
+        photoMap.set(item.id, { in: inPhoto, out: outPhoto });
       })
-  );
-
-  const summaryWidths = [550, 2100, 1200, 1200, 1200, 1200, 1300, 1600];
-  const summaryHeaders = ['No.', 'Nama Karyawan', 'NIK', 'Hadir', 'Tepat Waktu', 'Terlambat', 'Jam Kerja', 'Capaian'];
-  const summaryRows = quotas.map(
-    (quota, index) =>
-      new TableRow({
-        cantSplit: true,
-        children: [
-          cell(String(index + 1), summaryWidths[0], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(quota.employee.name, summaryWidths[1], { shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(quota.employee.employee_code, summaryWidths[2], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(String(quota.totalPresentDays), summaryWidths[3], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(String(quota.onTimeDays), summaryWidths[4], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(String(quota.lateDays), summaryWidths[5], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(`${quota.totalWorkHours.toFixed(2)} jam`, summaryWidths[6], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
-          cell(quota.isTargetMet ? `Tercapai (+${quota.surplusDays})` : `Kurang ${quota.remainingDays} hari`, summaryWidths[7], {
-            align: AlignmentType.CENTER,
-            shade: index % 2 ? LIGHT_BLUE : WHITE,
-          }),
-        ],
-      })
-  );
+    );
+  }
 
   const headerRow = (labels: string[], columnWidths: number[]) =>
     new TableRow({
@@ -162,13 +129,25 @@ export async function createMonthlyAttendanceDocx({
     const employeeAttendances = sortedAttendances.filter(
       (attendance) => attendance.employee_id === quota.employee.id
     );
-    const employeeRows = detailRows.filter((_, rowIndex) =>
-      sortedAttendances[rowIndex].employee_id === quota.employee.id
+    const employeeRows = employeeAttendances.map(
+      (item, index) =>
+        new TableRow({
+          cantSplit: true,
+          children: [
+            cell(String(index + 1), widths[0], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
+            cell(formatIndoDate(`${item.date}T12:00:00+07:00`).replace(/^\w+,\s*/, ''), widths[1], { shade: index % 2 ? LIGHT_BLUE : WHITE }),
+            cell(item.employee?.name || quota.employee.name, widths[2], { shade: index % 2 ? LIGHT_BLUE : WHITE }),
+            cell(item.employee?.employee_code || quota.employee.employee_code, widths[3], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
+            cell(getReportDepartment(item.employee?.department || quota.employee.department), widths[4], { shade: index % 2 ? LIGHT_BLUE : WHITE }),
+            cell(item.clock_in ? formatIndoTime(item.clock_in).replace(':00 WIB', ' WIB') : '-', widths[5], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
+            cell(item.clock_out ? formatIndoTime(item.clock_out).replace(':00 WIB', ' WIB') : '-', widths[6], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
+            cell(`${Number(item.work_hours || 0).toFixed(2)} jam`, widths[7], { align: AlignmentType.CENTER, shade: index % 2 ? LIGHT_BLUE : WHITE }),
+          ],
+        })
     );
     const employeePhotoSections = includePhotos
-      ? sortedAttendances.flatMap((attendance, attendanceIndex) => {
-          if (attendance.employee_id !== quota.employee.id) return [];
-          const photos = photoData[attendanceIndex];
+      ? employeeAttendances.flatMap((attendance) => {
+          const photos = photoMap.get(attendance.id);
           return [
             new Paragraph({
               spacing: { before: 100, after: 40 },
@@ -328,19 +307,12 @@ export async function createMonthlyAttendanceDocx({
               new TableRow({
                 children: [
                   cell(`Total Karyawan\n${quotas.length}`, 2600, { align: AlignmentType.CENTER, shade: BLUE }),
-                  cell(`Total Kehadiran\n${attendances.length} catatan`, 2600, { align: AlignmentType.CENTER, shade: BLUE }),
+                  cell(`Total Kehadiran\n${sortedAttendances.length} catatan`, 2600, { align: AlignmentType.CENTER, shade: BLUE }),
                   cell(`Target Tercapai\n${metTarget} karyawan`, 2600, { align: AlignmentType.CENTER, shade: BLUE }),
                   cell(`Total Jam Kerja\n${totalHours.toFixed(2)} jam`, 2600, { align: AlignmentType.CENTER, shade: BLUE }),
                 ],
               }),
             ],
-          }),
-          new Paragraph({ spacing: { before: 220, after: 100 }, children: [text('RINGKASAN PER KARYAWAN', true, NAVY, 21)] }),
-          new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            layout: TableLayoutType.FIXED,
-            borders,
-            rows: [headerRow(summaryHeaders, summaryWidths), ...summaryRows],
           }),
           ...employeeDetailSections,
           new Paragraph({ spacing: { before: 260, after: 20 }, children: [text(`Dicetak pada: ${formatIndoDate(`${getJakartaDateKey()}T12:00:00+07:00`)}`, false, '64748B', 16)] }),

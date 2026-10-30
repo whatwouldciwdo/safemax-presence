@@ -354,13 +354,16 @@ export class AttendanceService {
         .from('attendances')
         .select('*')
         .eq('employee_id', employeeId)
+        .neq('date', '2026-10-07')
         .order('date', { ascending: false });
       if (error) throw new Error(`Gagal memuat riwayat presensi: ${error.message}`);
       return (data || []) as Attendance[];
     }
 
     const list = getLocalData<Attendance[]>(STORAGE_KEY_ATTENDANCES, INITIAL_ATTENDANCES);
-    return list.filter((a) => a.employee_id === employeeId).sort((a, b) => b.date.localeCompare(a.date));
+    return list
+      .filter((a) => a.employee_id === employeeId && a.date !== '2026-10-07')
+      .sort((a, b) => b.date.localeCompare(a.date));
   }
 
   /**
@@ -393,6 +396,9 @@ export class AttendanceService {
       if (filter?.status && filter.status !== 'all') results = results.filter((a) => a.status === filter.status);
     }
 
+    // Exclude trial attendance on 2026-10-07 (official attendance started on October 8, 2026)
+    results = results.filter((a) => a.date !== '2026-10-07');
+
     // Attach employee info
     const enriched = results.map((att) => ({
       ...att,
@@ -415,6 +421,44 @@ export class AttendanceService {
       }
       return true;
     }).sort((a, b) => b.date.localeCompare(a.date));
+  }
+
+  /**
+   * Delete a single attendance by ID (Admin)
+   */
+  static async deleteAttendance(id: string): Promise<void> {
+    if (isSupabaseEnabled()) {
+      const supabase = createClient();
+      const { error } = await supabase.from('attendances').delete().eq('id', id);
+      if (error) throw new Error(`Gagal menghapus presensi: ${error.message}`);
+      return;
+    }
+
+    const list = getLocalData<Attendance[]>(STORAGE_KEY_ATTENDANCES, INITIAL_ATTENDANCES);
+    const updated = list.filter((a) => a.id !== id);
+    setLocalData(STORAGE_KEY_ATTENDANCES, updated);
+  }
+
+  /**
+   * Delete all attendances for a specific date (Admin)
+   */
+  static async deleteAttendancesByDate(date: string): Promise<number> {
+    if (isSupabaseEnabled()) {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('attendances')
+        .delete()
+        .eq('date', date)
+        .select('id');
+      if (error) throw new Error(`Gagal menghapus presensi tanggal ${date}: ${error.message}`);
+      return data?.length ?? 0;
+    }
+
+    const list = getLocalData<Attendance[]>(STORAGE_KEY_ATTENDANCES, INITIAL_ATTENDANCES);
+    const beforeCount = list.length;
+    const updated = list.filter((a) => a.date !== date);
+    setLocalData(STORAGE_KEY_ATTENDANCES, updated);
+    return beforeCount - updated.length;
   }
 
   /**

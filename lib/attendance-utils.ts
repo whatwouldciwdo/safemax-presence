@@ -130,7 +130,7 @@ export function calculateEmployeeQuota(
   targetDays: number = getMonthlyTargetDays(employee)
 ): EmployeeMonthlyQuota {
   const monthAttendances = attendances.filter(
-    (att) => att.employee_id === employee.id && att.date.startsWith(yearMonth)
+    (att) => att.employee_id === employee.id && att.date.startsWith(yearMonth) && att.date !== '2026-10-07'
   );
 
   const totalPresentDays = monthAttendances.length;
